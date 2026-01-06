@@ -1,4 +1,3 @@
-import * as anchor from "@coral-xyz/anchor";
 import { expect } from "chai";
 import {
   Keypair,
@@ -6,48 +5,32 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
-  TransactionInstruction,
 } from "@solana/web3.js";
 import { FailedTransactionMetadata, LiteSVM } from "litesvm";
-import { readFileSync } from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import BN from "bn.js";
+import {
+  coder,
+  buildDonateIx,
+  buildInitializeConfigIx,
+  getConfigPda,
+  getDonorIndexPda,
+  getDonorPda,
+  PROGRAM_ID,
+} from "../sdk/index.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const idlPath = path.join(__dirname, "..", "target", "idl", "solana_donations.json");
-const { BorshCoder } = anchor;
-type Idl = anchor.Idl;
-
-const idl = JSON.parse(readFileSync(idlPath, "utf-8")) as Idl;
-
-const programId = new PublicKey((idl as any).address);
-const coder = new BorshCoder(idl);
-
-const CONFIG_SEED = Buffer.from("config");
-const DONOR_SEED = Buffer.from("donor");
-const DONOR_INDEX_SEED = Buffer.from("donor_index");
 
 describe("solana-donations (litesvm)", () => {
   const svm = new LiteSVM().withSysvars().withBuiltins().withDefaultPrograms();
 
   const admin = Keypair.generate();
 
-  const [configPda] = PublicKey.findProgramAddressSync(
-    [CONFIG_SEED],
-    programId
-  );
-
-  const [donorPda] = PublicKey.findProgramAddressSync(
-    [DONOR_SEED, admin.publicKey.toBuffer()],
-    programId
-  );
-
-  const [donorIndexPda] = PublicKey.findProgramAddressSync(
-    [DONOR_INDEX_SEED, new BN(1).toArrayLike(Buffer, "le", 8)],
-    programId
-  );
+  const [configPda] = getConfigPda();
+  const [donorPda] = getDonorPda(admin.publicKey);
+  const [donorIndexPda] = getDonorIndexPda(new BN(1));
 
   const programSoPath = path.join(
     __dirname,
@@ -58,7 +41,7 @@ describe("solana-donations (litesvm)", () => {
   );
 
   before(() => {
-    svm.addProgramFromFile(programId, programSoPath);
+    svm.addProgramFromFile(PROGRAM_ID, programSoPath);
     svm.airdrop(admin.publicKey, BigInt(10 * LAMPORTS_PER_SOL));
   });
 
@@ -83,20 +66,7 @@ describe("solana-donations (litesvm)", () => {
   }
 
   it("initializes config", () => {
-    const data = coder.instruction.encode("initialize_config", {
-      treasury: admin.publicKey,
-    });
-
-    const ix = new TransactionInstruction({
-      programId,
-      keys: [
-        { pubkey: admin.publicKey, isSigner: true, isWritable: true },
-        { pubkey: configPda, isSigner: false, isWritable: true },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      ],
-      data,
-    });
-
+    const ix = buildInitializeConfigIx(admin.publicKey, admin.publicKey);
     const tx = new Transaction().add(ix);
     send(tx, admin);
 
@@ -111,24 +81,7 @@ describe("solana-donations (litesvm)", () => {
     const donor = admin; // same wallet for simplicity
     const amount = new BN(1_000_000);
 
-    const data = coder.instruction.encode("donate", {
-      amount,
-      nickname: "tester",
-    });
-
-    const ix = new TransactionInstruction({
-      programId,
-      keys: [
-        { pubkey: configPda, isSigner: false, isWritable: true },
-        { pubkey: donorPda, isSigner: false, isWritable: true },
-        { pubkey: donorIndexPda, isSigner: false, isWritable: true },
-        { pubkey: admin.publicKey, isSigner: false, isWritable: true }, // treasury
-        { pubkey: donor.publicKey, isSigner: true, isWritable: true },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      ],
-      data,
-    });
-
+    const ix = buildDonateIx(amount, "tester", donor.publicKey, admin.publicKey, new BN(1));
     const tx = new Transaction().add(ix);
     send(tx, donor);
 

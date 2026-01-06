@@ -2,8 +2,16 @@
   "license": "ISC",
   "scripts": {
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
-    "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
+    "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
+    "build:sdk": "tsc -p tsconfig.sdk.json && mkdir -p sdk/dist/idl && cp target/idl/solana_donations.json sdk/dist/idl/solana_donations.json",
+    "build": "yarn run build:sdk",
+    "prepare": "mkdir -p sdk/idl && cp target/idl/solana_donations.json sdk/idl/solana_donations.json"
   },
+  "main": "sdk/dist/index.js",
+  "types": "sdk/dist/index.d.ts",
+  "files": [
+    "sdk/dist"
+  ],
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1"
   },
